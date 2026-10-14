@@ -1,0 +1,997 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CELaRAI Answer Scoring</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Literata:opsz,wght@7..72,400;7..72,500&display=swap">
+<style>
+[hidden]{display:none!important}
+img{max-width:100%}
+body{margin:0}
+/* Layout: sticky app bar with three views (Overview, Demo, Validation). The demo is a four-stage workflow: choose input → processing → output → validation. */
+:root{
+  --bg:#FAFAFA; --surface:#FFFFFF; --sunk:#F3F4F6; --ink:#111418; --muted:#5F6670; --faint:#9298A2; --line:#E5E7EB;
+  --accent:#2753D8; --accent-2:#1F44B5; --accent-soft:#EEF2FD; --on-accent:#FFFFFF;
+  --bar:#FFFFFF; --bar-ink:#111418; --bar-muted:#6B7280; --bar-line:#E5E7EB;
+  --s2:#13774A; --s2-soft:#E5F4EC; --s1:#9A5B00; --s1-soft:#FCF2E0; --s0:#B42318; --s0-soft:#FCEAE7;
+  --code-bg:#F6F7F9; --code-ink:#1F2937; --code-dim:#6B7280; --code-key:#2753D8;
+  --f-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --f-read:"Literata",Georgia,"Times New Roman",serif;
+  --r:8px; --r-sm:6px;
+  --shadow:none; color-scheme:light;
+}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;text-wrap:balance;letter-spacing:-.01em}
+p{margin:0}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-size:.72rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+.gutter{padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px))}
+.container{max-width:1280px;margin:0 auto}
+
+/* app bar */
+.appbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bar);color:var(--bar-ink);border-bottom:1px solid var(--bar-line)}
+.appbar .container{display:flex;align-items:center;gap:32px;height:56px}
+.brand{display:flex;align-items:center;gap:12px;white-space:nowrap}
+.brand b{font-weight:700;font-size:1.02rem;letter-spacing:.02em;color:var(--bar-ink)}
+.brand i{width:1px;height:18px;background:var(--bar-line);display:block}
+.brand span{font-weight:400;font-size:.95rem;color:var(--bar-muted)}
+.tabs{display:flex;gap:2px;height:100%}
+.tab{position:relative;padding:0 14px;font-weight:500;font-size:.92rem;color:var(--bar-muted);height:100%;display:flex;align-items:center}
+.tab:hover{color:var(--bar-ink)}
+.tab[aria-selected="true"]{color:var(--bar-ink)}
+.tab[aria-selected="true"]::after{content:"";position:absolute;left:14px;right:14px;bottom:-1px;height:2px;background:var(--bar-ink)}
+.replay{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--bar-muted);border:1px solid var(--bar-line);border-radius:4px;padding:4px 10px;white-space:nowrap;font-family:var(--f-mono)}
+.replay i{width:6px;height:6px;border-radius:50%;background:var(--s2);display:block}
+
+main{padding-block:32px 64px}
+.view[hidden]{display:none!important}
+
+/* shared */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:6px;padding:9px 16px;font-weight:500;font-size:.92rem;border:1px solid var(--line);background:var(--surface);transition:background .15s,border-color .15s,opacity .15s;white-space:nowrap}
+.btn:hover{border-color:var(--faint)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.primary:hover{background:#2B3038;border-color:#2B3038}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.lg{padding:12px 20px;font-size:.95rem}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--ink)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.panel-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.panel-h h3{font-size:1rem;font-weight:600}
+.panel-b{padding:20px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:3px 7px;border-radius:4px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.lit{background:var(--accent-soft);color:var(--accent)}
+.pill.inf{background:var(--s1-soft);color:var(--s1)}
+.score{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:5px;font-family:var(--f-mono);font-weight:600;font-size:.95rem}
+.score[data-v="2"]{background:var(--s2-soft);color:var(--s2)}
+.score[data-v="1"]{background:var(--s1-soft);color:var(--s1)}
+.score[data-v="0"]{background:var(--s0-soft);color:var(--s0)}
+.score.pending{background:var(--sunk);color:var(--faint)}
+.gap{display:inline-block;font-family:var(--f-ui);font-size:.72em;font-style:normal;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border:1px dashed var(--faint);border-radius:4px;padding:0 5px;vertical-align:.12em}
+.quote{font-family:var(--f-read)}
+.empty-ans{font-style:italic;color:var(--muted)}
+
+/* ===== Overview ===== */
+.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:56px;align-items:center;padding-block:32px 56px}
+.hero h1{font-size:clamp(1.9rem,3.2vw,2.75rem);line-height:1.12;font-weight:600;letter-spacing:-.025em;margin-top:14px}
+.hero p.lead{font-size:1.15rem;color:var(--muted);margin-top:18px;max-width:58ch}
+.hero .ctas{display:flex;gap:12px;margin-top:28px;flex-wrap:wrap}
+.hero-card{padding:24px;display:flex;flex-direction:column;gap:16px}
+.hero-card .big{font-size:3.4rem;font-weight:600;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.hero-card .big small{font-size:1.4rem;color:var(--muted);font-weight:500}
+.bar{height:8px;border-radius:2px;background:var(--sunk);overflow:hidden;display:flex}
+.bar span{display:block;height:100%}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+.section{padding-block:40px;border-top:1px solid var(--line)}
+.section-h{display:flex;flex-direction:column;gap:8px;margin-bottom:24px;max-width:70ch}
+.section-h h2{font-size:1.5rem;font-weight:600;letter-spacing:-.02em}
+.section-h p{color:var(--muted)}
+
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:16px;align-items:stretch}
+.flow-step{padding:22px;display:flex;flex-direction:column;gap:12px}
+.flow-step .n{font-family:var(--f-mono);font-size:.8rem;color:var(--accent);font-weight:500;letter-spacing:.04em}
+.flow-step h3{font-size:1.1rem}
+.flow-step ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.flow-step li{display:flex;gap:10px;align-items:baseline;font-size:.95rem}
+.flow-step li b{font-weight:600}
+.flow-step li span{color:var(--muted);font-size:.88rem}
+.flow-arrow{display:flex;align-items:center;color:var(--faint)}
+.flow-arrow svg{width:28px;height:28px}
+
+.rubric{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.rub{padding:22px;display:flex;flex-direction:column;gap:14px;border-top:3px solid var(--line)}
+.rub[data-v="2"]{border-top-color:var(--s2)} .rub[data-v="1"]{border-top-color:var(--s1)} .rub[data-v="0"]{border-top-color:var(--s0)}
+.rub-h{display:flex;align-items:center;gap:12px}
+.rub-h .score{width:44px;height:44px;font-size:1.4rem;border-radius:6px}
+.rub-h h3{font-size:1.15rem}
+.rub-h p{font-size:.9rem;color:var(--muted)}
+.rub-ex{background:var(--sunk);border-radius:var(--r-sm);padding:14px;display:flex;flex-direction:column;gap:6px}
+.rub-ex .q{font-size:.88rem;color:var(--muted)}
+.rub-ex .a{font-family:var(--f-read);font-size:1.15rem}
+.rub-ex .why{font-size:.82rem;color:var(--muted);font-style:italic}
+
+.qtypes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.qtype{padding:22px;display:flex;flex-direction:column;gap:10px}
+.qtype h3{font-size:1.1rem;display:flex;align-items:center;gap:10px}
+.qtype .ex{font-family:var(--f-read);font-size:1.05rem;border-left:3px solid var(--line);padding-left:12px}
+
+.io{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+pre.code{margin:0;border:1px solid var(--line);background:var(--code-bg);color:var(--code-ink);border-radius:var(--r-sm);padding:16px 18px;font-family:var(--f-mono);font-size:.85rem;line-height:1.6;overflow-x:auto;white-space:pre}
+pre.code .k{color:var(--code-key)} pre.code .c{color:var(--code-dim)}
+.io .label{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+
+/* ===== Demo ===== */
+.demo-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}
+.demo-head h1{font-size:1.65rem;font-weight:600;letter-spacing:-.02em}
+.demo-head p{color:var(--muted);margin-top:4px}
+.stepper{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin-bottom:24px;background:var(--sunk);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.stp{display:flex;align-items:center;gap:12px;padding:14px 18px;text-align:left;border-right:1px solid var(--line);position:relative;min-width:0}
+.stp:last-child{border-right:0}
+.stp .d{width:28px;height:28px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-weight:700;font-size:.85rem;color:var(--faint);flex:none;transition:all .2s}
+.stp .t{display:flex;flex-direction:column;min-width:0}
+.stp .t b{font-weight:600;font-size:.95rem;color:var(--muted)}
+.stp .t span{font-size:.8rem;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stp:disabled{cursor:default}
+.stp.done .d{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.stp.done .t b{color:var(--ink)}
+.stp.now{background:var(--surface)}
+.stp.now .d{border-color:var(--accent);color:var(--accent)}
+.stp.now .t b{color:var(--accent)}
+.stp.now::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--accent)}
+
+.stage[hidden]{display:none!important}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;align-items:start}
+.sticky{position:sticky;top:calc(env(safe-area-inset-top,0px) + 84px)}
+.pick-block{display:flex;flex-direction:column;gap:12px}
+.pick-block + .pick-block{margin-top:28px}
+.pick-h{display:flex;align-items:baseline;gap:10px}
+.pick-h .num{font-family:var(--f-mono);font-size:.78rem;color:var(--accent);font-weight:500;letter-spacing:.04em}
+.pick-h h3{font-size:1.05rem;font-weight:600}
+.pick-h .hint{margin-left:auto;font-size:.82rem;color:var(--faint)}
+
+.stories{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.story-card{text-align:left;padding:14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);display:flex;flex-direction:column;gap:6px;transition:border-color .15s,background .15s}
+.story-card:hover{border-color:var(--faint)}
+.story-card b{font-weight:600;font-size:.95rem;line-height:1.3}
+.story-card span{font-size:.8rem;color:var(--muted)}
+.story-card[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+
+.reader{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);overflow:hidden}
+.reader-h{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--sunk);font-size:.85rem;color:var(--muted)}
+.reader-b{font-family:var(--f-read);font-size:1.02rem;line-height:1.7;padding:16px 18px;max-height:220px;overflow:auto;white-space:pre-line}
+
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:12px;align-items:center;text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);transition:border-color .15s,background .15s}
+.opt:hover{border-color:var(--faint)}
+.opt .radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center}
+.opt[aria-checked="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.opt[aria-checked="true"] .radio{border-color:var(--accent)}
+.opt[aria-checked="true"] .radio::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.opt .main{min-width:0}
+.opt .qtext{font-weight:500}
+.opt .ans{font-family:var(--f-read);font-size:1.02rem}
+.opt .meta{font-size:.78rem;color:var(--faint)}
+.placeholder{padding:18px;border:1px dashed var(--line);border-radius:var(--r-sm);color:var(--faint);font-size:.92rem;text-align:center}
+
+.req{display:flex;flex-direction:column}
+.req-row{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.req-row:last-of-type{border-bottom:0}
+.req-row .v{font-size:.95rem}
+.req-row .v.unset{color:var(--faint);font-style:italic}
+.req-row .v.ans{font-family:var(--f-read);font-size:1.1rem}
+.req-foot{padding:16px 20px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px;background:var(--sunk);border-radius:0 0 var(--r) var(--r)}
+.req-foot .btn{width:100%}
+.req-model{display:flex;justify-content:space-between;font-size:.82rem;color:var(--muted)}
+
+/* processing */
+.proc-top{display:flex;flex-direction:column;gap:12px;padding:20px;border-bottom:1px solid var(--line)}
+.proc-top .row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.proc-top h3{font-size:1.15rem}
+.progress{height:6px;border-radius:2px;background:var(--sunk);overflow:hidden}
+.progress span{display:block;height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .25s linear}
+.psteps{list-style:none;margin:0;padding:8px 0}
+.pstep{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:14px;padding:14px 20px;position:relative}
+.pstep::before{content:"";position:absolute;left:37px;top:46px;bottom:-14px;width:2px;background:var(--line)}
+.pstep:last-child::before{display:none}
+.pstep .ic{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;background:var(--surface);position:relative;z-index:1;color:var(--faint)}
+.pstep .ic svg{width:16px;height:16px}
+.pstep h4{font-size:1rem;font-weight:600;color:var(--muted)}
+.pstep .sub{font-size:.88rem;color:var(--faint)}
+.pstep .dt{font-family:var(--f-mono);font-size:.8rem;color:var(--faint);padding-top:6px}
+.pstep .detail{margin-top:10px;display:none}
+.pstep.run .ic{border-color:var(--accent);color:var(--accent)}
+.pstep.run .ic::after{content:"";position:absolute;inset:-2px;border-radius:50%;border:2px solid transparent;border-top-color:var(--accent);animation:spin .8s linear infinite}
+.pstep.run h4,.pstep.ok h4{color:var(--ink)}
+.pstep.run .sub,.pstep.ok .sub{color:var(--muted)}
+.pstep.ok .ic{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.pstep.ok::before{background:var(--accent)}
+.pstep.run .detail,.pstep.ok .detail{display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.checks{display:flex;flex-wrap:wrap;gap:6px}
+.chk{font-size:.8rem;padding:3px 9px;border-radius:6px;background:var(--sunk);color:var(--muted)}
+.chk b{color:var(--ink);font-weight:600}
+.chk.warn{background:var(--s1-soft);color:var(--s1)}
+.prompt{display:flex;flex-direction:column;gap:6px;font-size:.85rem}
+.pblk{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px;align-items:baseline;padding:8px 10px;border-radius:6px;background:var(--sunk);opacity:.35;transition:opacity .3s,background .3s}
+.pblk.on{opacity:1}
+.pblk.ins.on{background:var(--accent-soft)}
+.pblk .k{font-family:var(--f-mono);font-size:.75rem;color:var(--muted)}
+.pblk .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pblk .v.read{font-family:var(--f-read)}
+.model-run{display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm)}
+.model-run .chip{font-family:var(--f-mono);font-size:.8rem;padding:4px 8px;border-radius:4px;background:var(--sunk);color:var(--ink);border:1px solid var(--line)}
+.indet{flex:1;height:4px;border-radius:999px;background:var(--sunk);overflow:hidden;position:relative}
+.indet::after{content:"";position:absolute;top:0;bottom:0;width:35%;background:var(--accent);border-radius:999px;animation:slide 1.1s ease-in-out infinite}
+.pstep.ok .indet::after{animation:none;width:100%;left:0}
+@keyframes slide{from{left:-35%}to{left:100%}}
+.parsed{display:flex;align-items:center;gap:10px;font-size:.92rem}
+
+.console{background:var(--surface);color:var(--code-ink);border-radius:var(--r);border:1px solid var(--line);font-family:var(--f-mono);font-size:.8rem;line-height:1.7;overflow:hidden;display:flex;flex-direction:column}
+.console-h{display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--code-bg);color:var(--code-dim);font-size:.75rem;letter-spacing:.04em;text-transform:uppercase}
+.console-b{padding:12px 14px;height:420px;overflow:auto}
+.console-b div{white-space:pre-wrap;word-break:break-word}
+.console-b .ts{color:var(--code-dim)}
+.console-b .ok{color:var(--s2);font-weight:500}
+.console-b .hl{color:var(--code-key)}
+.proc-foot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid var(--line)}
+
+/* output */
+.out-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}
+.result{padding:28px;display:flex;flex-direction:column;gap:20px}
+.result-score{display:flex;align-items:center;gap:22px}
+.result-score .num{width:104px;height:104px;border-radius:10px;display:grid;place-items:center;font-family:var(--f-mono);font-size:3.6rem;font-weight:600;flex:none}
+.result-score[data-v="2"] .num{background:var(--s2-soft);color:var(--s2)}
+.result-score[data-v="1"] .num{background:var(--s1-soft);color:var(--s1)}
+.result-score[data-v="0"] .num{background:var(--s0-soft);color:var(--s0)}
+.result-score h2{font-size:1.9rem;font-weight:600;letter-spacing:-.02em}
+.result-score[data-v="2"] h2{color:var(--s2)} .result-score[data-v="1"] h2{color:var(--s1)} .result-score[data-v="0"] h2{color:var(--s0)}
+.scale3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.scale3 div{padding:10px;border-radius:8px;background:var(--sunk);font-size:.82rem;color:var(--faint);display:flex;flex-direction:column;gap:2px}
+.scale3 div b{font-family:var(--f-mono);font-size:1.05rem}
+.scale3 div.on[data-v="2"]{background:var(--s2-soft);color:var(--s2)}
+.scale3 div.on[data-v="1"]{background:var(--s1-soft);color:var(--s1)}
+.scale3 div.on[data-v="0"]{background:var(--s0-soft);color:var(--s0)}
+.recap{display:flex;flex-direction:column;gap:14px}
+.recap .q{font-weight:600;font-size:1.05rem}
+.recap .a{font-family:var(--f-read);font-size:1.3rem;line-height:1.4}
+.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:24px}
+
+/* validation (single) */
+.verdict{display:flex;align-items:center;gap:16px;padding:18px 22px;border-radius:var(--r);margin-bottom:20px;border:1px solid currentColor}
+.verdict.ok{background:var(--s2-soft);color:var(--s2)}
+.verdict.no{background:var(--s1-soft);color:var(--s1)}
+.verdict .ic{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:currentColor;flex:none}
+.verdict .ic svg{width:22px;height:22px;color:var(--surface)}
+.verdict h3{font-size:1.2rem}
+.verdict p{color:var(--ink);opacity:.8;font-size:.92rem}
+.raters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.rater{padding:20px;display:flex;flex-direction:column;gap:12px}
+.rater .who{display:flex;justify-content:space-between;align-items:center}
+.rater .who b{font-weight:600}
+.rater .sc{display:flex;align-items:center;gap:12px}
+.rater .sc .score{width:52px;height:52px;font-size:1.6rem;border-radius:8px}
+.rater .sc span{font-weight:600;font-size:1.05rem}
+.rater .why{font-size:.9rem;color:var(--muted);font-style:italic;border-top:1px solid var(--line);padding-top:10px}
+.rater.judge{border-color:var(--ink)}
+
+/* ===== Validation view ===== */
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}
+.metric{padding:18px 20px;display:flex;flex-direction:column;gap:4px}
+.metric .v{font-family:var(--f-ui)!important;font-size:2.1rem;font-weight:600;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.metric .l{font-size:.85rem;color:var(--muted)}
+.val-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th{font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface);position:sticky;top:0}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr{transition:background .3s}
+tbody tr.pending td{color:var(--faint)}
+tbody tr.flash{background:var(--accent-soft)}
+tbody tr.miss{background:var(--s1-soft)}
+tbody tr.miss td:first-child{box-shadow:inset 3px 0 0 var(--s1)}
+td.ans{font-family:var(--f-read);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td.c{text-align:center}
+td .score{width:26px;height:26px;font-size:.85rem;border-radius:6px}
+.mk{font-weight:700}
+.mk.ok{color:var(--s2)} .mk.no{color:var(--s1)}
+.rowbtn{color:var(--accent);font-weight:600;font-size:.82rem;white-space:nowrap}
+.rowbtn:hover{text-decoration:underline}
+.tscroll{max-height:620px;overflow:auto}
+.cm{display:grid;grid-template-columns:auto repeat(3,1fr);gap:4px;font-size:.85rem}
+.cm .h{font-size:.72rem;color:var(--muted);text-align:center;padding:4px;font-weight:600}
+.cm .rh{font-size:.72rem;color:var(--muted);display:flex;align-items:center;justify-content:flex-end;padding-right:6px;font-weight:600}
+.cm .cell{aspect-ratio:1.4;border-radius:4px;display:grid;place-items:center;font-family:var(--f-mono);font-weight:600;font-size:1.1rem;background:var(--sunk);color:var(--faint);transition:background .3s,color .3s}
+.cm .cell.diag{background:var(--s2-soft);color:var(--s2)}
+.cm .cell.off{background:var(--s1-soft);color:var(--s1)}
+.cm .cell.zero{background:var(--sunk);color:var(--faint)}
+.cm-axis{display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);margin-top:8px}
+.note{font-size:.85rem;color:var(--muted)}
+.misslist{display:flex;flex-direction:column;gap:10px}
+.missi{padding:12px;border-radius:var(--r-sm);background:var(--sunk);display:flex;flex-direction:column;gap:4px;font-size:.88rem}
+.missi .a{font-family:var(--f-read);font-size:.98rem}
+.missi .s{display:flex;gap:12px;color:var(--muted);font-size:.8rem}
+
+footer.foot{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px 24px;font-size:.82rem;color:var(--faint)}
+
+/* responsive */
+@media (max-width:1100px){
+  .stories{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .split,.val-grid{grid-template-columns:minmax(0,1fr)}
+  .sticky{position:static}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:860px){
+  .hero,.out-grid,.io,.qtypes{grid-template-columns:minmax(0,1fr)}
+  .flow{grid-template-columns:minmax(0,1fr)}
+  .flow-arrow{justify-content:center}
+  .flow-arrow svg{transform:rotate(90deg)}
+  .rubric,.raters{grid-template-columns:minmax(0,1fr)}
+  .stepper{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stp:nth-child(2){border-right:0}
+  .stp:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  .replay{display:none}
+}
+@media (max-width:560px){
+  .gutter{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .appbar .container{gap:12px}
+  .brand i,.brand span{display:none}
+  .tab{padding:0 10px}
+  .stories{grid-template-columns:minmax(0,1fr)}
+  .stp .t span{display:none}
+  .pblk{grid-template-columns:minmax(0,1fr)}
+  .result-score .num{width:80px;height:80px;font-size:2.6rem}
+  .metrics{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+
+<header class="appbar gutter">
+  <div class="container">
+    <div class="brand">
+      <b>CELaRAI</b><i aria-hidden="true"></i><span>Answer Scoring</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" data-view="overview" id="tab-overview">Overview</button>
+      <button class="tab" role="tab" data-view="demo" id="tab-demo">Demo</button>
+      <button class="tab" role="tab" data-view="validation" id="tab-validation">Validation</button>
+    </nav>
+    <div class="replay" title="Scores are replayed from the recorded evaluation results. No model is called live."><i></i>Replay mode · recorded results</div>
+  </div>
+</header>
+
+<main class="gutter">
+<div class="container">
+
+<!-- ================= OVERVIEW ================= -->
+<section class="view" id="view-overview">
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Reading comprehension · Early readers</div>
+      <h1>Automatic scoring of children's spoken answers to story questions</h1>
+      <p class="lead">A child reads a short story and answers a question out loud. An LLM judge reads the story, the question and the transcribed answer, and returns a score of 0, 1 or 2, the same scale trained annotators use.</p>
+      <div class="ctas">
+        <button class="btn primary lg" data-go="demo">Start the demo</button>
+        <button class="btn lg" data-go="validation">See validation results</button>
+      </div>
+    </div>
+    <div class="panel hero-card">
+      <div class="eyebrow">Agreement with human annotators</div>
+      <div class="big" id="heroAgree"></div>
+      <p class="muted" id="heroAgreeText"></p>
+      <div class="bar" id="heroBar"></div>
+      <div class="legend" id="heroLegend"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-h">
+      <div class="eyebrow">How it works</div>
+      <h2>Three inputs in, one score out</h2>
+      <p>The judge sees the same information a teacher would: the passage, the question that was asked, and what the child said.</p>
+    </div>
+    <div class="flow">
+      <div class="panel flow-step">
+        <div class="n">STEP 01</div><h3>Inputs</h3>
+        <ul>
+          <li><b>Story</b><span>the passage the child read</span></li>
+          <li><b>Question</b><span>literal or inferential</span></li>
+          <li><b>Student answer</b><span>transcript of the spoken response</span></li>
+        </ul>
+      </div>
+      <div class="flow-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+      <div class="panel flow-step">
+        <div class="n">STEP 02</div><h3>LLM judge</h3>
+        <ul>
+          <li><b>Qwen3-8-27B</b></li>
+          <li><b>Few-shot prompt</b><span>scored examples guide the rubric</span></li>
+          <li><b>Full story</b><span>given as context</span></li>
+        </ul>
+      </div>
+      <div class="flow-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg></div>
+      <div class="panel flow-step">
+        <div class="n">STEP 03</div><h3>Score</h3>
+        <ul>
+          <li><span class="score" data-v="2">2</span><b>Correct</b></li>
+          <li><span class="score" data-v="1">1</span><b>Partial</b></li>
+          <li><span class="score" data-v="0">0</span><b>Incorrect</b></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-h">
+      <div class="eyebrow">The scoring scale</div>
+      <h2>What 2, 1 and 0 mean</h2>
+      <p>Real answers from the evaluation set, with the score both human annotators gave.</p>
+    </div>
+    <div class="rubric" id="rubric"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-h">
+      <div class="eyebrow">Question types</div>
+      <h2>Literal and inferential questions</h2>
+    </div>
+    <div class="qtypes">
+      <div class="panel qtype">
+        <h3><span class="pill lit">Literal</span>The answer is stated in the story</h3>
+        <p class="muted">The child has to recall a detail from the text.</p>
+        <p class="ex">What did Stan lose?</p>
+      </div>
+      <div class="panel qtype">
+        <h3><span class="pill inf">Inferential</span>The answer needs reasoning</h3>
+        <p class="muted">The child has to connect ideas or explain why. These are harder to score.</p>
+        <p class="ex">Why do fish hide in the mud or bushes?</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-h">
+      <div class="eyebrow">Integration</div>
+      <h2>What FableVision sends and gets back</h2>
+      <p>FableVision sends the inputs and reads back the score. No judge setup is needed on their side.</p>
+    </div>
+    <div class="io">
+      <div><div class="label"><span class="eyebrow">Request</span><span class="pill">Illustrative format</span></div>
+<pre class="code"><span class="k">"story"</span>:    <span class="c">"The big red hen is in the pen. …"</span>,
+<span class="k">"question"</span>: <span class="c">"What did the chicks do?"</span>,
+<span class="k">"answer"</span>:   <span class="c">"take a nap"</span></pre></div>
+      <div><div class="label"><span class="eyebrow">Response</span><span class="pill">Illustrative format</span></div>
+<pre class="code"><span class="k">"score"</span>: <span class="c">2</span>,
+<span class="k">"label"</span>: <span class="c">"correct"</span></pre></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= DEMO ================= -->
+<section class="view" id="view-demo" hidden>
+  <div class="demo-head">
+    <div>
+      <h1>Score an answer</h1>
+      <p>Pick a real student response, watch the pipeline score it, then compare with the human annotators.</p>
+    </div>
+    <button class="btn" id="randomBtn" type="button">Pick a random answer</button>
+  </div>
+
+  <div class="stepper" id="stepper">
+    <button class="stp" data-stage="1" type="button"><span class="d">1</span><span class="t"><b>Choose input</b><span>Story, question, answer</span></span></button>
+    <button class="stp" data-stage="2" type="button"><span class="d">2</span><span class="t"><b>Processing</b><span>Prompt and LLM judge</span></span></button>
+    <button class="stp" data-stage="3" type="button"><span class="d">3</span><span class="t"><b>Output</b><span>Score returned</span></span></button>
+    <button class="stp" data-stage="4" type="button"><span class="d">4</span><span class="t"><b>Validation</b><span>Compare with humans</span></span></button>
+  </div>
+
+  <!-- Stage 1 -->
+  <div class="stage" id="stage-1">
+    <div class="split">
+      <div>
+        <div class="pick-block">
+          <div class="pick-h"><span class="num">01</span><h3>Choose a story</h3><span class="hint" id="storyHint"></span></div>
+          <div class="stories" id="stories"></div>
+          <div class="reader" id="reader" hidden>
+            <div class="reader-h"><span id="readerTitle"></span><span id="readerWords" class="mono"></span></div>
+            <div class="reader-b" id="readerBody"></div>
+          </div>
+        </div>
+        <div class="pick-block">
+          <div class="pick-h"><span class="num">02</span><h3>Choose a question</h3></div>
+          <div class="opts" id="questions"><div class="placeholder">Choose a story first.</div></div>
+        </div>
+        <div class="pick-block">
+          <div class="pick-h"><span class="num">03</span><h3>Choose a student response</h3><span class="hint">Manual transcripts</span></div>
+          <div class="opts" id="answers"><div class="placeholder">Choose a question first.</div></div>
+        </div>
+      </div>
+      <aside class="panel sticky req">
+        <div class="panel-h"><h3>Scoring request</h3><span class="pill" id="reqStatus">Incomplete</span></div>
+        <div class="req-row"><span class="eyebrow">Story</span><span class="v unset" id="reqStory">Not selected</span></div>
+        <div class="req-row"><span class="eyebrow">Question</span><span class="v unset" id="reqQ">Not selected</span></div>
+        <div class="req-row"><span class="eyebrow">Student answer</span><span class="v unset" id="reqA">Not selected</span></div>
+        <div class="req-foot">
+          <div class="req-model"><span>Judge</span><span class="mono">Qwen3-8-27B · few-shot</span></div>
+          <button class="btn primary lg" id="runBtn" type="button" disabled>Run scoring</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Stage 2 -->
+  <div class="stage" id="stage-2" hidden>
+    <div class="split">
+      <div class="panel">
+        <div class="proc-top">
+          <div class="row"><h3 id="procTitle">Scoring in progress</h3><span class="mono muted" id="procTime">0.0 s</span></div>
+          <div class="progress"><span id="procBar"></span></div>
+          <div class="row"><span class="muted" id="procStep">Starting</span><span class="mono muted" id="procPct">0%</span></div>
+        </div>
+        <ol class="psteps">
+          <li class="pstep" data-p="1">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>
+            <div><h4>Check inputs</h4><div class="sub">Confirm story, question and answer are present</div><div class="detail checks" id="pd1"></div></div>
+            <span class="dt" id="pt1"></span>
+          </li>
+          <li class="pstep" data-p="2">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h7"/></svg></span>
+            <div><h4>Build few-shot prompt</h4><div class="sub">Insert the inputs into the judge prompt</div><div class="detail prompt" id="pd2"></div></div>
+            <span class="dt" id="pt2"></span>
+          </li>
+          <li class="pstep" data-p="3">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg></span>
+            <div><h4>Run LLM judge</h4><div class="sub">The model reads the prompt and decides a score</div><div class="detail"><div class="model-run"><span class="chip">Qwen3-8-27B</span><div class="indet"></div><span class="mono muted" id="modelState">running</span></div></div></div>
+            <span class="dt" id="pt3"></span>
+          </li>
+          <li class="pstep" data-p="4">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></span>
+            <div><h4>Read score</h4><div class="sub">Extract the 0 / 1 / 2 score from the model's reply</div><div class="detail parsed" id="pd4"></div></div>
+            <span class="dt" id="pt4"></span>
+          </li>
+        </ol>
+        <div class="proc-foot">
+          <button class="btn ghost" id="skipBtn" type="button">Skip animation</button>
+          <button class="btn primary" id="toOutput" type="button" disabled>View output</button>
+        </div>
+      </div>
+      <div class="console sticky">
+        <div class="console-h"><span>Pipeline log</span><span id="logCount">0 lines</span></div>
+        <div class="console-b" id="log" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stage 3 -->
+  <div class="stage" id="stage-3" hidden>
+    <div class="out-grid">
+      <div class="panel result">
+        <div class="eyebrow">Judge score</div>
+        <div class="result-score" id="resScore"><div class="num" id="resNum"></div><div><h2 id="resLabel"></h2><p class="muted" id="resMeaning"></p></div></div>
+        <div class="scale3" id="resScale">
+          <div data-v="0"><b>0</b>Incorrect</div>
+          <div data-v="1"><b>1</b>Partial</div>
+          <div data-v="2"><b>2</b>Correct</div>
+        </div>
+        <div><div class="label" style="display:flex;justify-content:space-between;margin-bottom:8px"><span class="eyebrow">Response to FableVision</span><span class="pill">Illustrative format</span></div><pre class="code" id="resJson"></pre></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h3>Scored answer</h3><span class="pill" id="resType"></span></div>
+        <div class="panel-b recap">
+          <div><div class="eyebrow">Story</div><div id="resStory"></div></div>
+          <div><div class="eyebrow">Question</div><div class="q" id="resQ"></div></div>
+          <div><div class="eyebrow">Student answer</div><div class="a" id="resA"></div></div>
+          <div class="note" id="resId"></div>
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" data-restart type="button">Score another answer</button>
+      <button class="btn primary" id="toValidate" type="button">Validate against humans</button>
+    </div>
+  </div>
+
+  <!-- Stage 4 -->
+  <div class="stage" id="stage-4" hidden>
+    <div class="verdict" id="verdict"></div>
+    <div class="raters" id="raters"></div>
+    <p class="note" style="margin-top:16px">The human score is used as ground truth only when both annotators gave the same score.</p>
+    <div class="actions">
+      <button class="btn" data-restart type="button">Score another answer</button>
+      <button class="btn primary" data-go="validation" type="button">Run batch validation on all answers</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================= VALIDATION ================= -->
+<section class="view" id="view-validation" hidden>
+  <div class="demo-head">
+    <div>
+      <h1>Batch validation</h1>
+      <p id="valIntro"></p>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn primary" id="batchRun" type="button">Run batch</button>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="panel metric"><span class="v mono" id="mScored"></span><span class="l">Answers scored</span></div>
+    <div class="panel metric"><span class="v mono" id="mAgree"></span><span class="l">Exact agreement with human score</span></div>
+    <div class="panel metric"><span class="v mono" id="mKappa"></span><span class="l">Cohen's kappa</span></div>
+    <div class="panel metric"><span class="v mono" id="mMiss"></span><span class="l">Disagreements</span></div>
+  </div>
+  <div class="progress" style="margin:-8px 0 24px"><span id="batchBar"></span></div>
+
+  <div class="val-grid">
+    <div class="panel">
+      <div class="panel-h"><h3>Results by answer</h3><span class="note">Select a row to open it in the demo</span></div>
+      <div class="tablewrap tscroll">
+        <table>
+          <thead><tr><th>#</th><th>Story</th><th>Type</th><th>Student answer</th><th class="c">Human</th><th class="c">Judge</th><th class="c">Match</th><th></th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:24px">
+      <div class="panel">
+        <div class="panel-h"><h3>Confusion matrix</h3></div>
+        <div class="panel-b">
+          <div class="cm" id="cm"></div>
+          <div class="cm-axis"><span>Rows: human score</span><span>Columns: judge score</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h3>Where the judge differed</h3></div>
+        <div class="panel-b misslist" id="misslist"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <span>CELaRAI Answer Scoring · Judge: Qwen3-8-27B, few-shot, full story context</span>
+  <span>Scores replayed from the evaluation results sheet · manual transcripts · answers where both annotators agreed</span>
+</footer>
+
+</div>
+</main>
+
+<script>
+const DATA = {"stories": {"The Big Red Hen": "The big red hen is in the pen.\nShe has six little chicks with her.\nThe chicks run.\nThen they sit by the hen.\nShe keeps them warm.\nThe chicks nap.\nThe hen naps too.\nIt is a good day on the farm.", "The Lost Stamp": "Stan had a red stamp on his desk.\nHe did not use the stamp a lot, but he liked it.\nOne day, Stan went to get the stamp.\nThe stamp was not on the desk!\nStan ran to Star.\n“Star, I lost my red stamp. Can you help me?”\n“Yes,” said Star. “Let us stop and think. Did you set the stamp on a stand?”\nStan did stop and think.\n“I did set the stamp on the big stand in class,” he said.\nStar and Stan went to the stand.\nThe stamp was not there.\nNext, Star and Stan went to the steps.\n“Did the stamp fall on the steps?” Star said.\nStan bent to look.\nThere was no stamp on the steps.\nAt last, Stan went to the back desk.\nThe stamp was stuck to a stack of pads!\nStan held up the stamp.\n“Here it is!” he said.\nStar and Stan clap.\n“Next time, I will not lose my stamp,” Stan said.\nStar and Stan went back to class with a big grin.", "The Missing Ring": "Ming was digging in the sand. She was hoping to find a shell.\nAs she was digging, she saw a ring. The ring was shining in the sun.\nMing went running to Dad.\n“Look! I found a ring!” she said.\nDad was smiling. “That is Mom’s ring! She was missing it.”\nMom came rushing from the deck.\n“My ring! Thank you for bringing it to me, Ming!”\nMom gave Ming a big hug.\nMing kept smiling. Finding the ring was the best part of the day.", "Fish in the Pond": "Fish can swim fast in a pond. A fish will swish its fins to dash and splash. Some fish can rush to get food. A fish can snap up a bug or a small bit of mash.\nFish can hide in mud or in a big bush by the pond. This helps the fish when a crab or a bird rushes in.\nA fish has a soft body and the skin has fins. The fins can flash in the sun.\nSome fish live in fresh ponds. Some fish live in the big sea. Fish can be big or small. Fish can be red or tan. All fish can swim and splash!", "Walk on the Beach": "Mel and I wanted to take a walk on the beach. We dressed in our swimsuits and mom put sunscreen on us. I took a towel with me because I knew we might get wet. The beach was not far away so we rode our bikes to get there fast. Mel and I parked our bikes and to the beach. The air smelled sandy and the sea felt warm under our feet. Mel walked to the edge of the water. She saw a white bird flying in the sky the bird landed near me. He flew away when I turned to catch him. I started to look for seashells. Mel looked too. She found 10 seashells. I found 4 seashells and a broken sand tower. Mel found a crab hiding in the shell. The walking on the beach made us hot . Mel put her feet in the water to cool off.  Mel said i shall put my feet in the water too. It felt good to get wet and the waves pushed it on our legs. We had fun in the water. I was happy we went to the beach", "The Camping Trip": "Luis and Maya were going camping with Dad. They were packing a tent, a bag, and food. Maya was singing as she put on a red cap. Luis was humming as he looked at a map.\nWhen they got to the hill, Dad was lifting the big tent. Luis was helping by holding the tent up. Maya was running to get sticks for the fire.\nAs night came, the kids were sitting by the fire. They were roasting nuts and sipping hot milk. The fire was crackling and popping. The kids were singing a silly song.\nThen Maya heard a rustling in the grass. “What is running in the dark?” she said. Luis was grabbing a lamp. The lamp was shining on a small dog!\nThe dog was wagging and licking. It was sniffing at the food and jumping at the bag. The kids were giggling. Dad was smiling.\nThe dog kept resting by the fire. It was curling up and napping. Luis and Maya kept singing. Dad was humming. The fire was glowing, and the stars were twinkling.\nIt was the best night of camping.", "The Cat and the Map": "Jan had a cat.\nThe cat was Sam.\nSam sat on Jan’s lap.\nJan had a map.\n“It is a map of the park,” said Jan.\n“I can run and hop at the park!”\nSam ran to the map.\nSam sat on it.\n“Oh, Sam!” said Jan. “That is my map!”\nJan got the map.\nSam ran to the mat.\nJan ran to Sam.\n“Let’s go, Sam!” said Jan.\nJan and Sam ran and ran.\nThey ran up a path.\nThey ran past a big rock.\nAt last, they sat and had a nap.\nJan had fun.\nSam had fun.", "Min, Kim, and the Big Dig": "Min has a kit.\nKim has a lid.\nThey dig in the big pit.\n“Dig, Min! Dig, Kim!”\nA bug is in the pit.\nThe bug is big and red.\nMin can lift the lid.\nKim can pin the bug in the kit.\nThe bug will not slip.\n“Look, Kim! We did it!” said Min.\nKim had a big grin.\nThey put the bug in the kit.\nMin, Kim, and the bug sit in the sun.\nThey had fun and did a big job."}, "rows": [{"i": 0, "sid": "ST062", "session": "SI_20250612_2_ST062", "q": "Q1", "story": "Walk on the Beach", "type": "Literal", "question": "What did the children in the story wear to walk in the beach?", "answer": "uh swimsuits", "human": 2, "a1": 2, "a1r": "", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 1, "sid": "ST105", "session": "DT_20260420_2_ST105", "q": "Q2", "story": "The Lost Stamp", "type": "Literal", "question": "What did Stan lose?", "answer": "the stamp", "human": 2, "a1": 2, "a1r": "", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 2, "sid": "ST111", "session": "SI_20260420_K_ST111", "q": "Q1", "story": "The Big Red Hen", "type": "Inferential", "question": "Why was it a good day?", "answer": "coz its a __ __", "human": 0, "a1": 0, "a1r": "Does not answer question", "a2": 0, "a2r": "Incomplete response", "zs": 0, "judge": 0}, {"i": 3, "sid": "ST098", "session": "DT_20260421_2_ST098", "q": "Q1", "story": "The Lost Stamp", "type": "Literal", "question": "What did Stan lose?", "answer": "his stamp", "human": 2, "a1": 2, "a1r": "Correct response", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 4, "sid": "ST100", "session": "DT_20260420_2_ST100", "q": "Q1", "story": "The Missing Ring", "type": "Literal", "question": "Where did Ming find the ring?", "answer": "um she found it in the __", "human": 0, "a1": 0, "a1r": "Does not answer question", "a2": 0, "a2r": "Incomplete response", "zs": 0, "judge": 0}, {"i": 5, "sid": "ST095", "session": "DT_20260420_2_ST095", "q": "Q2", "story": "The Missing Ring", "type": "Inferential", "question": "Why was finding the ring the best part of the day?", "answer": "coz it made his mo mom stay", "human": 0, "a1": 0, "a1r": "Incorrect response", "a2": 0, "a2r": "", "zs": 0, "judge": 0}, {"i": 6, "sid": "ST041", "session": "SI_20250616_2_ST041", "q": "Q1", "story": "The Big Red Hen", "type": "Literal", "question": "Where are the chicks and hen?", "answer": "in the hap chicken hap", "human": 0, "a1": 0, "a1r": "", "a2": 0, "a2r": "", "zs": 0, "judge": 0}, {"i": 7, "sid": "ST019", "session": "SI_20250610_1_ST019", "q": "Q1", "story": "Walk on the Beach", "type": "Literal", "question": "What did the children in the story wear to walk in the beach?", "answer": "swimsuits", "human": 2, "a1": 2, "a1r": "", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 8, "sid": "ST101", "session": "DT_20250420_2_ST101", "q": "Q2", "story": "The Missing Ring", "type": "Inferential", "question": "Why was finding the ring the best part of the day?", "answer": "um because because she felt she felt sad that her mom lost her ring", "human": 2, "a1": 2, "a1r": "Uses details from the text and makes sense.", "a2": 2, "a2r": "", "zs": 0, "judge": 0}, {"i": 9, "sid": "ST057", "session": "SI_20250612_2_ST057", "q": "Q1", "story": "Walk on the Beach", "type": "Literal", "question": "What did the children in the story wear to walk in the beach?", "answer": "swim suits", "human": 2, "a1": 2, "a1r": "", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 10, "sid": "ST117", "session": "SI_20260420_K_ST117", "q": "Q1", "story": "The Big Red Hen", "type": "Literal", "question": "What did the chicks do?", "answer": "take a nap", "human": 2, "a1": 2, "a1r": "Uses details from the text and makes sense.", "a2": 2, "a2r": "", "zs": 1, "judge": 2}, {"i": 11, "sid": "ST010", "session": "SI_20250611_K_ST010", "q": "Q1", "story": "The Big Red Hen", "type": "Literal", "question": "Where are the chicks and hen?", "answer": "in the farm", "human": 1, "a1": 1, "a1r": "", "a2": 1, "a2r": "", "zs": 1, "judge": 1}, {"i": 12, "sid": "ST109", "session": "DT_20260420_2_ST109", "q": "Q1", "story": "Fish in the Pond", "type": "Literal", "question": "What are two things you learned about fish from this book?", "answer": "umm fish swim fast", "human": 1, "a1": 1, "a1r": "Missing full details to answer the question", "a2": 1, "a2r": "Incomplete response. Only gave 1 detail", "zs": 1, "judge": 1}, {"i": 13, "sid": "ST101", "session": "DT_20250420_2_ST101", "q": "Q3", "story": "Fish in the Pond", "type": "Inferential", "question": "Why do fish hide in the mud or bushes?", "answer": "Um because because he hides from crabs or birds", "human": 2, "a1": 2, "a1r": "Uses details from the text and makes sense.", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 14, "sid": "ST049", "session": "SI_20250612_2_ST049", "q": "Q1", "story": "Walk on the Beach", "type": "Literal", "question": "What did the children in the story wear to walk in the beach?", "answer": "uhm swim suits", "human": 2, "a1": 2, "a1r": "", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 15, "sid": "ST100", "session": "DT_20260420_2_ST100", "q": "Q2", "story": "The Missing Ring", "type": "Inferential", "question": "Why was finding the ring the best part of the day?", "answer": "I dont know", "human": 0, "a1": 0, "a1r": "Does not answer question", "a2": 0, "a2r": "IDK", "zs": 0, "judge": 0}, {"i": 16, "sid": "ST089", "session": "DT_20260421_1_ST089", "q": "Q1", "story": "The Cat and the Map", "type": "Literal", "question": "What was the name of Jan’s cat?", "answer": "Yeah", "human": 0, "a1": 0, "a1r": "No response", "a2": 0, "a2r": "", "zs": 0, "judge": 0}, {"i": 17, "sid": "ST098", "session": "DT_20260421_2_ST098", "q": "Q2", "story": "Fish in the Pond", "type": "Inferential", "question": "Why do fish hide in the mud or bushes?", "answer": "Because something could merrr them", "human": 0, "a1": 0, "a1r": "No response", "a2": 0, "a2r": "", "zs": 0, "judge": 1}, {"i": 18, "sid": "ST112", "session": "SI_20250420_K_ST112", "q": "Q1", "story": "The Big Red Hen", "type": "Inferential", "question": "Why was it a good day?", "answer": "because it was sunny", "human": 0, "a1": 0, "a1r": "Response does not match story details", "a2": 0, "a2r": "Inaccurate response", "zs": 0, "judge": 0}, {"i": 19, "sid": "ST100", "session": "DT_20260420_2_ST100", "q": "Q3", "story": "The Camping Trip", "type": "Literal", "question": "What did Maya and Luis find in the grass?", "answer": "they found a dog", "human": 2, "a1": 2, "a1r": "", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 20, "sid": "ST089", "session": "DT_20260421_1_ST089", "q": "Q2", "story": "The Cat and the Map", "type": "Inferential", "question": "How do you think Jan felt when Sam sat on the map?", "answer": "", "human": 0, "a1": 0, "a1r": "No response", "a2": 0, "a2r": "", "zs": 0, "judge": 0}, {"i": 21, "sid": "ST065", "session": "SI_20260420_K_ST065", "q": "Q1", "story": "The Big Red Hen", "type": "Literal", "question": "What did the chicks do?", "answer": "uhh go with her", "human": 0, "a1": 0, "a1r": "Does not answer question", "a2": 0, "a2r": "Inaccurate response", "zs": 0, "judge": 0}, {"i": 22, "sid": "ST093", "session": "DT_20260421_2_ST093", "q": "Q1", "story": "Fish in the Pond", "type": "Literal", "question": "What are two things you learned about fish from this book?", "answer": "um they can __ you __ swim fast", "human": 1, "a1": 1, "a1r": "Missing full details", "a2": 1, "a2r": "Listed only 1 detail", "zs": 0, "judge": 1}, {"i": 23, "sid": "ST031", "session": "SI_20250609_1_ST031", "q": "Q1", "story": "Walk on the Beach", "type": "Literal", "question": "What did the children in the story wear to walk in the beach?", "answer": "the swimsuits", "human": 2, "a1": 2, "a1r": "", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 24, "sid": "ST103", "session": "DT_20260420_1_ST103", "q": "Q1", "story": "Fish in the Pond", "type": "Literal", "question": "What are two things you learned about fish from this book?", "answer": "um like they swim fast they rush to get food they could um they um they go they fish can hide in the mud or in a big bush by the pond and some fish swim in fresh ponds some fish live in the big sea and they splash and swim", "human": 2, "a1": 2, "a1r": "Includes expected information", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 25, "sid": "ST107", "session": "DT_20260420_2_ST107", "q": "Q1", "story": "The Missing Ring", "type": "Literal", "question": "Where did Ming find the ring?", "answer": "in __ __", "human": 0, "a1": 0, "a1r": "Does not answer question", "a2": 0, "a2r": "Incomplete response", "zs": 1, "judge": 0}, {"i": 26, "sid": "ST052", "session": "SI_20250612_2_ST052", "q": "Q1", "story": "Walk on the Beach", "type": "Literal", "question": "What did the children in the story wear to walk in the beach?", "answer": "a swim suit", "human": 2, "a1": 2, "a1r": "", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 27, "sid": "ST065", "session": "SI_20260420_K_ST065", "q": "Q2", "story": "The Big Red Hen", "type": "Literal", "question": "What did the hen do?", "answer": "take a nap", "human": 2, "a1": 2, "a1r": "Uses details from the text and makes sense.", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 28, "sid": "ST015", "session": "SI_20250610_K_ST015", "q": "Q1", "story": "The Big Red Hen", "type": "Literal", "question": "Where are the chicks and hen?", "answer": "at a farm", "human": 1, "a1": 1, "a1r": "", "a2": 1, "a2r": "", "zs": 1, "judge": 1}, {"i": 29, "sid": "ST117", "session": "SI_20260420_K_ST117", "q": "Q2", "story": "The Big Red Hen", "type": "Inferential", "question": "Why was it a good day?", "answer": "because the farm was growing", "human": 0, "a1": 0, "a1r": "Response does not match story details", "a2": 0, "a2r": "Inaccurate response", "zs": 0, "judge": 0}, {"i": 30, "sid": "ST105", "session": "DT_20260420_2_ST105", "q": "Q3", "story": "Fish in the Pond", "type": "Inferential", "question": "Why do fish hide in the mud or bushes?", "answer": "when a crab or a bird rushes in they hide", "human": 2, "a1": 2, "a1r": "Includes expected information", "a2": 2, "a2r": "", "zs": 2, "judge": 2}, {"i": 31, "sid": "ST095", "session": "DT_20260420_2_ST095", "q": "Q3", "story": "The Camping Trip", "type": "Inferential", "question": "How do you know?", "answer": "I read the passage and it said the kids were giggling", "human": 2, "a1": 2, "a1r": "Correct response", "a2": 2, "a2r": "", "zs": 2, "judge": 0}, {"i": 32, "sid": "ST082", "session": "DT_20260424_1_ST082", "q": "Q1", "story": "Min, Kim, and the Big Dig", "type": "Inferential", "question": "How did Kim and Min feel after catching the bug?", "answer": "Huh huh yuck", "human": 0, "a1": 0, "a1r": "Incorrect response", "a2": 0, "a2r": "", "zs": 0, "judge": 0}]};
+const ROWS = DATA.rows, STORIES = DATA.stories;
+const LABEL = {2:"Correct",1:"Partial",0:"Incorrect"};
+const MEANING = {2:"The answer fully addresses the question using the story.",1:"The answer is on the right track but is missing detail.",0:"The answer is wrong, off-topic, or there was no response."};
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const words = s => (s.trim().match(/\S+/g) || []).length;
+const sleep = ms => new Promise(r => setTimeout(r, reduce ? Math.min(ms, 40) : ms));
+function ansHTML(a){
+  if (!a) return '<span class="empty-ans">No response</span>';
+  return esc(a).replace(/_{2,}/g, '<span class="gap" title="Unclear speech in the recording">unclear</span>');
+}
+function typePill(t){ return `<span class="pill ${t==="Literal"?"lit":"inf"}">${t}</span>`; }
+
+/* ---------- metrics ---------- */
+function stats(rows){
+  const n = rows.length, cm = [[0,0,0],[0,0,0],[0,0,0]];
+  rows.forEach(r => cm[r.human][r.judge]++);
+  const agree = rows.filter(r => r.human === r.judge).length;
+  let pe = 0;
+  for (let k=0;k<3;k++){ const h = cm[k].reduce((a,b)=>a+b,0); const j = cm[0][k]+cm[1][k]+cm[2][k]; pe += (h/n)*(j/n); }
+  const po = n ? agree/n : 0;
+  const kappa = n && pe < 1 ? (po-pe)/(1-pe) : 0;
+  return {n, agree, po, kappa, cm};
+}
+const FULL = stats(ROWS);
+
+/* ---------- views ---------- */
+let view = "overview";
+function show(v){
+  view = v;
+  $$(".view").forEach(s => s.hidden = s.id !== "view-"+v);
+  $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.view === v));
+  window.scrollTo({top:0, behavior: reduce ? "auto" : "smooth"});
+}
+$$(".tab").forEach(t => t.addEventListener("click", () => show(t.dataset.view)));
+document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (g) show(g.dataset.go); });
+
+/* ---------- overview ---------- */
+(function(){
+  $("#heroAgree").innerHTML = `${FULL.agree}<small> / ${FULL.n}</small>`;
+  $("#heroAgreeText").textContent = `answers where the judge gave the same score as the human annotators (${Math.round(FULL.po*100)}% exact agreement, Cohen's κ = ${FULL.kappa.toFixed(2)}).`;
+  const c = [0,1,2].map(v => ROWS.filter(r => r.human === v).length);
+  $("#heroBar").innerHTML = [2,1,0].map(v => `<span style="width:${c[v]/FULL.n*100}%;background:var(--s${v})"></span>`).join("");
+  $("#heroLegend").innerHTML = [2,1,0].map(v => `<span><i style="background:var(--s${v})"></i>${c[v]} scored ${v} by humans</span>`).join("");
+  const ex = [
+    {v:2, find:r => r.question==="What did the chicks do?" && r.human===2, why:"Uses details from the text and makes sense."},
+    {v:1, find:r => r.sid==="ST109", why:"Only gave 1 of the 2 details asked for."},
+    {v:0, find:r => r.question==="What did the chicks do?" && r.human===0, why:"Does not answer the question."},
+  ];
+  $("#rubric").innerHTML = ex.map(e => {
+    const r = ROWS.find(e.find);
+    return `<div class="panel rub" data-v="${e.v}">
+      <div class="rub-h"><span class="score" data-v="${e.v}">${e.v}</span><div><h3>${LABEL[e.v]}</h3><p>${["Wrong, off-topic or no answer","Partly answers, missing detail","Fully answers the question"][e.v]}</p></div></div>
+      <div class="rub-ex"><span class="q">${esc(r.story)} · ${esc(r.question)}</span><span class="a">“${ansHTML(r.answer)}”</span><span class="why">Annotator: ${esc(e.why)}</span></div>
+    </div>`;
+  }).join("");
+})();
+
+/* ---------- demo: selection ---------- */
+const sel = {story:null, qkey:null, row:null};
+let stage = 1, reached = 1, runToken = 0;
+const storyNames = Object.keys(STORIES);
+const qKey = r => r.story + "||" + r.question;
+
+function renderStories(){
+  $("#storyHint").textContent = `${storyNames.length} stories · ${ROWS.length} answers`;
+  $("#stories").innerHTML = storyNames.map(s => {
+    const rs = ROWS.filter(r => r.story === s), qs = new Set(rs.map(qKey)).size;
+    return `<button class="story-card" type="button" data-story="${esc(s)}" aria-pressed="${sel.story===s}"><b>${esc(s)}</b><span>${words(STORIES[s])} words · ${qs} question${qs>1?"s":""} · ${rs.length} answer${rs.length>1?"s":""}</span></button>`;
+  }).join("");
+}
+function renderQuestions(){
+  const box = $("#questions");
+  if (!sel.story){ box.innerHTML = '<div class="placeholder">Choose a story first.</div>'; return; }
+  const seen = new Map();
+  ROWS.filter(r => r.story === sel.story).forEach(r => { const k = qKey(r); if (!seen.has(k)) seen.set(k, {r, n:0}); seen.get(k).n++; });
+  box.innerHTML = [...seen.entries()].map(([k,{r,n}]) =>
+    `<button class="opt" type="button" role="radio" data-q="${esc(k)}" aria-checked="${sel.qkey===k}"><span class="radio"></span><span class="main"><span class="qtext">${esc(r.question)}</span></span><span style="display:flex;gap:8px;align-items:center">${typePill(r.type)}<span class="meta">${n} answer${n>1?"s":""}</span></span></button>`
+  ).join("");
+}
+function renderAnswers(){
+  const box = $("#answers");
+  if (!sel.qkey){ box.innerHTML = '<div class="placeholder">Choose a question first.</div>'; return; }
+  box.innerHTML = ROWS.filter(r => qKey(r) === sel.qkey).map(r =>
+    `<button class="opt" type="button" role="radio" data-row="${r.i}" aria-checked="${sel.row===r.i}"><span class="radio"></span><span class="main"><span class="ans">${r.answer ? "“"+ansHTML(r.answer)+"”" : ansHTML("")}</span></span><span class="meta mono">${esc(r.sid)} · ${esc(r.q)}</span></button>`
+  ).join("");
+}
+function renderReader(){
+  const rd = $("#reader");
+  if (!sel.story){ rd.hidden = true; return; }
+  rd.hidden = false;
+  $("#readerTitle").textContent = sel.story;
+  $("#readerWords").textContent = words(STORIES[sel.story]) + " words";
+  $("#readerBody").textContent = STORIES[sel.story];
+  $("#readerBody").scrollTop = 0;
+}
+function renderReq(){
+  const r = sel.row != null ? ROWS[sel.row] : null;
+  const q = sel.qkey ? ROWS.find(x => qKey(x) === sel.qkey) : null;
+  const set = (id, html, cls) => { const el = $(id); el.className = "v " + (cls||""); el.innerHTML = html; };
+  sel.story ? set("#reqStory", esc(sel.story)) : set("#reqStory", "Not selected", "unset");
+  q ? set("#reqQ", esc(q.question)) : set("#reqQ", "Not selected", "unset");
+  r ? set("#reqA", r.answer ? "“"+ansHTML(r.answer)+"”" : ansHTML(""), "ans") : set("#reqA", "Not selected", "unset");
+  $("#runBtn").disabled = !r;
+  const st = $("#reqStatus"); st.textContent = r ? "Ready" : "Incomplete"; st.className = "pill" + (r ? " lit" : "");
+}
+function renderPick(){ renderStories(); renderReader(); renderQuestions(); renderAnswers(); renderReq(); }
+
+$("#stories").addEventListener("click", e => { const b = e.target.closest("[data-story]"); if (!b) return;
+  if (sel.story !== b.dataset.story){ sel.story = b.dataset.story; sel.qkey = null; sel.row = null; }
+  resetReach(); renderPick(); });
+$("#questions").addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (!b) return;
+  if (sel.qkey !== b.dataset.q){ sel.qkey = b.dataset.q; sel.row = null; }
+  resetReach(); renderQuestions(); renderAnswers(); renderReq(); });
+$("#answers").addEventListener("click", e => { const b = e.target.closest("[data-row]"); if (!b) return;
+  sel.row = +b.dataset.row; resetReach(); renderAnswers(); renderReq(); });
+$("#randomBtn").addEventListener("click", () => { const r = ROWS[Math.floor(Math.random()*ROWS.length)]; selectRow(r.i); goStage(1); });
+function selectRow(i){ const r = ROWS[i]; sel.story = r.story; sel.qkey = qKey(r); sel.row = i; resetReach(); renderPick(); }
+function resetReach(){ runToken++; reached = 1; renderStepper(); }
+
+/* ---------- stepper ---------- */
+function renderStepper(){
+  $$(".stp").forEach(b => {
+    const s = +b.dataset.stage;
+    b.classList.toggle("now", s === stage);
+    b.classList.toggle("done", s < stage || (s <= reached && s !== stage));
+    b.disabled = s > reached;
+  });
+}
+function goStage(s){
+  stage = s; reached = Math.max(reached, s);
+  $$(".stage").forEach(el => el.hidden = el.id !== "stage-"+s);
+  renderStepper();
+  if (view !== "demo") show("demo"); else window.scrollTo({top:0, behavior: reduce ? "auto" : "smooth"});
+}
+$("#stepper").addEventListener("click", e => { const b = e.target.closest(".stp"); if (b && !b.disabled) goStage(+b.dataset.stage); });
+$$("[data-restart]").forEach(b => b.addEventListener("click", () => { sel.story = sel.qkey = sel.row = null; resetReach(); renderPick(); goStage(1); }));
+
+/* ---------- processing ---------- */
+let t0 = 0, clock = null, skipping = false;
+function log(html){
+  const el = document.createElement("div");
+  const t = ((performance.now() - t0)/1000).toFixed(3).padStart(6,"0");
+  el.innerHTML = `<span class="ts">[${t}]</span> ${html}`;
+  const b = $("#log"); b.appendChild(el); b.scrollTop = b.scrollHeight;
+  $("#logCount").textContent = b.children.length + " lines";
+}
+function setP(n, cls){ const li = $(`.pstep[data-p="${n}"]`); li.classList.remove("run","ok"); if (cls) li.classList.add(cls); }
+function progress(p, label){ $("#procBar").style.width = p + "%"; $("#procPct").textContent = Math.round(p) + "%"; if (label) $("#procStep").textContent = label; }
+const wait = ms => skipping ? Promise.resolve() : sleep(ms);
+
+async function run(){
+  const token = ++runToken; skipping = false;
+  const r = ROWS[sel.row], story = STORIES[r.story];
+  goStage(2);
+  $("#log").innerHTML = ""; $("#logCount").textContent = "0 lines";
+  [1,2,3,4].forEach(n => { setP(n, null); $("#pt"+n).textContent = ""; });
+  $("#pd1").innerHTML = ""; $("#pd4").innerHTML = ""; $("#modelState").textContent = "running";
+  $("#pd2").innerHTML = [
+    ["instructions","Scoring rubric for 0 / 1 / 2", false, false],
+    ["examples","Scored example answers (few-shot)", false, false],
+    ["story", story.replace(/\s+/g," "), true, true],
+    ["question", r.question, true, false],
+    ["student_answer", r.answer || "(no response)", true, true],
+  ].map(([k,v,ins,read]) => `<div class="pblk${ins?" ins":""}"><span class="k">{${k}}</span><span class="v${read?" read":""}">${esc(v)}</span></div>`).join("");
+  $("#toOutput").disabled = true; $("#skipBtn").disabled = false;
+  $("#procTitle").textContent = "Scoring in progress";
+  progress(0, "Starting");
+  t0 = performance.now();
+  clearInterval(clock);
+  clock = setInterval(() => { $("#procTime").textContent = ((performance.now()-t0)/1000).toFixed(1) + " s"; }, 100);
+  const alive = () => token === runToken;
+  const stepTime = (n, s) => { $("#pt"+n).textContent = ((performance.now()-s)/1000).toFixed(2) + " s"; };
+
+  log(`Request received · student <span class="hl">${esc(r.sid)}</span> · ${esc(r.q)}`);
+  // 1 check inputs
+  let s = performance.now(); setP(1,"run"); progress(4, "Checking inputs");
+  await wait(350); if (!alive()) return;
+  const chips = [];
+  chips.push(`<span class="chk">Story <b>${words(story)}</b> words</span>`);
+  chips.push(`<span class="chk">Question <b>${words(r.question)}</b> words · ${r.type.toLowerCase()}</span>`);
+  chips.push(`<span class="chk">Answer <b>${words(r.answer.replace(/_{2,}/g,""))}</b> words</span>`);
+  if (!r.answer) chips.push(`<span class="chk warn">Empty answer</span>`);
+  if (/_{2,}/.test(r.answer)) chips.push(`<span class="chk warn">Unclear speech in transcript</span>`);
+  $("#pd1").innerHTML = chips.join("");
+  log(`Story loaded: "${esc(r.story)}" (${words(story)} words)`);
+  log(`Question type: ${esc(r.type.toLowerCase())}`);
+  log(r.answer ? `Answer transcript: ${words(r.answer)} tokens` : `Answer transcript is empty`);
+  await wait(450); if (!alive()) return;
+  setP(1,"ok"); stepTime(1, s); progress(18);
+
+  // 2 build prompt
+  s = performance.now(); setP(2,"run"); progress(20, "Building few-shot prompt");
+  const blks = $$("#pd2 .pblk");
+  for (let i=0;i<blks.length;i++){ await wait(260); if (!alive()) return; blks[i].classList.add("on"); progress(20 + (i+1)*4); }
+  log(`Prompt assembled: instructions + few-shot examples + story + question + answer`);
+  await wait(250); if (!alive()) return;
+  setP(2,"ok"); stepTime(2, s); progress(42);
+
+  // 3 run judge
+  s = performance.now(); setP(3,"run"); progress(44, "Waiting for the LLM judge");
+  log(`Sending prompt to <span class="hl">Qwen3-8-27B</span> (few-shot, full story)`);
+  const dur = 1900 + Math.min(words(story), 300) * 2;
+  const steps = 20;
+  for (let i=0;i<steps;i++){ await wait(dur/steps); if (!alive()) return; progress(44 + (i+1)/steps*40); }
+  log(`Response received from judge`);
+  $("#modelState").textContent = "done";
+  setP(3,"ok"); stepTime(3, s); progress(86);
+
+  // 4 parse score
+  s = performance.now(); setP(4,"run"); progress(88, "Reading score");
+  await wait(400); if (!alive()) return;
+  $("#pd4").innerHTML = `<span class="score" data-v="${r.judge}">${r.judge}</span><span>Score <b>${r.judge}</b> · ${LABEL[r.judge]}</span>`;
+  log(`<span class="ok">Score = ${r.judge} (${LABEL[r.judge]})</span>`);
+  setP(4,"ok"); stepTime(4, s); progress(100, "Complete");
+  clearInterval(clock);
+  const total = ((performance.now()-t0)/1000).toFixed(1);
+  $("#procTime").textContent = total + " s";
+  log(`Done in ${total} s (replayed)`);
+  $("#procTitle").textContent = "Scoring complete";
+  $("#toOutput").disabled = false; $("#skipBtn").disabled = true;
+  reached = Math.max(reached, 3); renderStepper();
+  fillOutput(); fillValidation();
+}
+$("#runBtn").addEventListener("click", run);
+$("#skipBtn").addEventListener("click", () => { skipping = true; });
+$("#toOutput").addEventListener("click", () => goStage(3));
+$("#toValidate").addEventListener("click", () => goStage(4));
+
+/* ---------- output ---------- */
+function fillOutput(){
+  const r = ROWS[sel.row];
+  $("#resScore").dataset.v = r.judge;
+  $("#resNum").textContent = r.judge;
+  $("#resLabel").textContent = LABEL[r.judge];
+  $("#resMeaning").textContent = MEANING[r.judge];
+  $$("#resScale div").forEach(d => d.classList.toggle("on", +d.dataset.v === r.judge));
+  $("#resJson").innerHTML = `<span class="k">"student"</span>:  <span class="c">"${esc(r.sid)}"</span>,\n<span class="k">"question"</span>: <span class="c">"${esc(r.q)}"</span>,\n<span class="k">"score"</span>:    <span class="c">${r.judge}</span>,\n<span class="k">"label"</span>:    <span class="c">"${LABEL[r.judge].toLowerCase()}"</span>`;
+  $("#resType").outerHTML = `<span id="resType">${typePill(r.type)}</span>`;
+  $("#resStory").textContent = r.story;
+  $("#resQ").textContent = r.question;
+  $("#resA").innerHTML = r.answer ? "“"+ansHTML(r.answer)+"”" : ansHTML("");
+  $("#resId").textContent = `Student ${r.sid} · ${r.q} · manual transcript`;
+}
+
+/* ---------- validation (single) ---------- */
+const ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
+const ICON_NO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>';
+function fillValidation(){
+  const r = ROWS[sel.row], ok = r.judge === r.human;
+  const v = $("#verdict");
+  v.className = "verdict " + (ok ? "ok" : "no");
+  v.innerHTML = `<span class="ic">${ok ? ICON_OK : ICON_NO}</span><div><h3>${ok ? "Judge matches the human score" : "Judge differs from the human score"}</h3><p>Judge gave ${r.judge} (${LABEL[r.judge]}). Both annotators gave ${r.human} (${LABEL[r.human]}).</p></div>`;
+  const card = (cls, who, tag, s, why) => `<div class="panel rater ${cls}"><div class="who"><b>${who}</b><span class="pill">${tag}</span></div><div class="sc"><span class="score" data-v="${s}">${s}</span><span>${LABEL[s]}</span></div><div class="why">${why ? esc(why) : "No rationale recorded"}</div></div>`;
+  $("#raters").innerHTML =
+    card("judge", "LLM judge", "Qwen3-8-27B", r.judge, "Few-shot prompt with full story") +
+    card("", "Annotator 1", "Human", r.a1, r.a1r) +
+    card("", "Annotator 2", "Human", r.a2, r.a2r);
+}
+
+/* ---------- batch validation ---------- */
+$("#valIntro").textContent = `Runs the judge's recorded scores for all ${ROWS.length} answers where both annotators gave the same score, and compares them with that human score.`;
+function renderTable(done){
+  $("#tbody").innerHTML = ROWS.map((r,k) => {
+    const d = k < done, ok = r.judge === r.human;
+    return `<tr id="tr-${k}" class="${d ? (ok ? "" : "miss") : "pending"}">
+      <td class="mono">${k+1}</td><td>${esc(r.story)}</td><td>${typePill(r.type)}</td>
+      <td class="ans" title="${esc(r.answer || "No response")}">${r.answer ? ansHTML(r.answer) : ansHTML("")}</td>
+      <td class="c"><span class="score" data-v="${r.human}">${r.human}</span></td>
+      <td class="c">${d ? `<span class="score" data-v="${r.judge}">${r.judge}</span>` : `<span class="score pending">–</span>`}</td>
+      <td class="c">${d ? (ok ? '<span class="mk ok">✓</span>' : '<span class="mk no">✗</span>') : ""}</td>
+      <td><button class="rowbtn" type="button" data-open="${r.i}">Open</button></td></tr>`;
+  }).join("");
+}
+function renderMetrics(done){
+  const st = stats(ROWS.slice(0, done));
+  $("#mScored").textContent = `${done} / ${ROWS.length}`;
+  $("#mAgree").textContent = done ? `${(st.po*100).toFixed(1)}%` : "–";
+  $("#mKappa").textContent = done ? st.kappa.toFixed(2) : "–";
+  $("#mMiss").textContent = done ? String(done - st.agree) : "–";
+  $("#batchBar").style.width = (done/ROWS.length*100) + "%";
+  let h = '<div></div>' + [0,1,2].map(v => `<div class="h">Judge ${v}</div>`).join("");
+  for (let a=0;a<3;a++){
+    h += `<div class="rh">Human ${a}</div>`;
+    for (let b=0;b<3;b++){ const n = st.cm[a][b]; h += `<div class="cell ${n===0 ? "zero" : a===b ? "diag" : "off"}">${n}</div>`; }
+  }
+  $("#cm").innerHTML = h;
+  const misses = ROWS.slice(0, done).filter(r => r.judge !== r.human);
+  $("#misslist").innerHTML = misses.length ? misses.map(r =>
+    `<div class="missi"><span class="muted">${esc(r.story)} · ${esc(r.question)}</span><span class="a">${r.answer ? "“"+ansHTML(r.answer)+"”" : ansHTML("")}</span><span class="s"><span>Human <b>${r.human}</b></span><span>Judge <b>${r.judge}</b></span><button class="rowbtn" type="button" data-open="${r.i}">Open in demo</button></span></div>`
+  ).join("") : '<p class="note">No disagreements yet.</p>';
+}
+let batchToken = 0;
+async function runBatch(){
+  const token = ++batchToken;
+  $("#batchRun").disabled = true; $("#batchRun").textContent = "Running…";
+  renderTable(0); renderMetrics(0);
+  for (let k=0;k<ROWS.length;k++){
+    await sleep(260); if (token !== batchToken) return;
+    const tr = $("#tr-"+k), r = ROWS[k], ok = r.judge === r.human;
+    tr.className = ok ? "flash" : "miss";
+    tr.children[5].innerHTML = `<span class="score" data-v="${r.judge}">${r.judge}</span>`;
+    tr.children[6].innerHTML = ok ? '<span class="mk ok">✓</span>' : '<span class="mk no">✗</span>';
+    if (ok) setTimeout(() => { if (tr.className === "flash") tr.className = ""; }, 500);
+    tr.scrollIntoView({block:"nearest", behavior: reduce ? "auto" : "smooth"});
+    renderMetrics(k+1);
+  }
+  $("#batchRun").disabled = false; $("#batchRun").textContent = "Run batch again";
+}
+$("#batchRun").addEventListener("click", runBatch);
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-open]"); if (!b) return;
+  selectRow(+b.dataset.open); goStage(1);
+});
+
+/* ---------- init ---------- */
+renderPick(); renderStepper(); renderTable(ROWS.length); renderMetrics(ROWS.length);
+show("overview");
+</script>
+
+</body>
+</html>
